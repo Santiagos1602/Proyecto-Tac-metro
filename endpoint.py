@@ -3,7 +3,7 @@ import network, socket, time, json
 
 # ── Hardware ─────────────────────────────────
 hall   = Pin(4, Pin.IN, Pin.PULL_UP)
-led    = Pin(2, Pin.OUT)
+led = Pin(26, Pin.OUT)
 pulsos = 0
 rpm    = 0
 rpm_max = 0
