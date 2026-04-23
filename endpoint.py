@@ -1,5 +1,6 @@
 from machine import Pin
 import network, socket, time, json
+import gc
 
 # ── Hardware ─────────────────────────────────
 hall   = Pin(4, Pin.IN, Pin.PULL_UP)
@@ -16,10 +17,13 @@ def contar_pulso(pin):
 hall.irq(trigger=Pin.IRQ_FALLING, handler=contar_pulso)
 
 # ── WiFi Access Point ─────────────────────────
+from config import SSID, PASSWORD,
+  PANEL_KEY
+
 ap = network.WLAN(network.AP_IF)
 ap.active(True)
-ap.config(essid='Tacometro-ESP32', password='rpm12345')
-print("WiFi listo — IP:", ap.ifconfig()[0])
+ap.config(essid=SSID,
+  password=PASSWORD)
 
 # ── Servidor HTTP ─────────────────────────────
 srv = socket.socket()
@@ -29,6 +33,32 @@ srv.listen(5)
 print("Servidor activo — abre 192.168.4.1")
 
 ultimo_calculo = time.ticks_ms()
+
+sesiones = []  # IPs autorizadas
+
+login_html = """HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n
+<!DOCTYPE html><html><head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0d0a;color:#e6edf3;font-family:monospace;
+     min-height:100vh;display:flex;flex-direction:column;
+     align-items:center;justify-content:center;padding:1.5rem}
+h1{color:#39d353;margin-bottom:10px}
+input{padding:14px;font-size:18px;border-radius:10px;
+      border:1px solid #1e2e1e;width:240px;text-align:center;
+      margin:8px 0;background:#111511;color:#e6edf3}
+button{padding:14px 40px;font-size:18px;border-radius:10px;
+       border:none;background:#39d353;color:#0a0d0a;
+       cursor:pointer;font-weight:bold}
+</style></head><body>
+<h1>Tacometro Digital</h1>
+<p>Ingrese la clave de acceso</p>
+<input type='password' id='k' placeholder='Clave'>
+<button onclick="location.href='/?clave='+document.getElementById('k').value">
+Entrar</button>
+</body></html>"""
 
 while True:
     # Calcular RPM cada 1 segundo
@@ -44,23 +74,35 @@ while True:
     # Atender petición HTTP
     try:
         srv.settimeout(0.1)
-        cl, _ = srv.accept()
+        cl, addr = srv.accept()
         peticion = cl.recv(1024).decode()
+        ip_cliente = str(addr[0])
 
-        if '/datos' in peticion:
-            # ── Endpoint JSON ──────────────────────
-            datos = {
-                "rpm": rpm,
-                "rpm_max": rpm_max,
-                "historial": historial[-10:],
-                "estado": "ALTO" if rpm > 3000 else "NORMAL"
-            }
-            respuesta = ("HTTP/1.1 200 OK\r\n"
-                        "Content-Type: application/json\r\n"
-                        "Access-Control-Allow-Origin: *\r\n\r\n"
-                        + json.dumps(datos))
-            cl.send(respuesta)
+        # Verificar si envían clave
+        if "clave=" in peticion:
+            clave = peticion.split("clave=")[1].split(" ")[0].split("&")[0]
+            if clave == PANEL_KEY:
+                if ip_cliente not in sesiones:
+                    sesiones.append(ip_cliente)
 
+        # Si NO está autorizado, mostrar login
+        if ip_cliente not in sesiones:
+            cl.send(login_html)
+            cl.close()
+            gc.collect()
+        else:
+            # Cliente autorizado
+            if '/datos' in peticion:
+                datos = {
+                    "rpm": rpm,
+                    "rpm_max": rpm_max,
+                    "historial": historial[-10:],
+                    "estado": "ALTO" if rpm > 3000 else "NORMAL"
+                }
+                respuesta = ("HTTP/1.1 200 OK\r\n"
+                            "Content-Type: application/json\r\n\r\n"
+                            + json.dumps(datos))
+                cl.send(respuesta)
         else:
             # ── Dashboard HTML principal ────────────
             html = """HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n
@@ -153,5 +195,7 @@ actualizar();
             cl.send(html)
 
         cl.close()
-    except OSError:
-        pass
+        gc.collect()
+    except OSError as e:
+      if e.args[0] != 11:
+        print("Error:", e)  
