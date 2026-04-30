@@ -17,13 +17,11 @@ def contar_pulso(pin):
 hall.irq(trigger=Pin.IRQ_FALLING, handler=contar_pulso)
 
 # ── WiFi Access Point ─────────────────────────
-from config import SSID, PASSWORD,
-  PANEL_KEY
+from config import SSID, PASSWORD, PANEL_KEY  # ← coma suelta eliminada
 
 ap = network.WLAN(network.AP_IF)
 ap.active(True)
-ap.config(essid=SSID,
-  password=PASSWORD)
+ap.config(essid=SSID, password=PASSWORD)  # ← junto en una línea
 
 # ── Servidor HTTP ─────────────────────────────
 srv = socket.socket()
@@ -34,7 +32,7 @@ print("Servidor activo — abre 192.168.4.1")
 
 ultimo_calculo = time.ticks_ms()
 
-sesiones = []  # IPs autorizadas
+sesiones = []
 
 login_html = """HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n
 <!DOCTYPE html><html><head>
@@ -67,9 +65,11 @@ while True:
         rpm = pulsos * 60
         pulsos = 0
         ultimo_calculo = ahora
-        if rpm > rpm_max: rpm_max = rpm
+        if rpm > rpm_max:
+            rpm_max = rpm
         historial.append(rpm)
-        if len(historial) > 20: historial.pop(0)
+        if len(historial) > 20:
+            historial.pop(0)
 
     # Atender petición HTTP
     try:
@@ -100,12 +100,12 @@ while True:
                     "estado": "ALTO" if rpm > 3000 else "NORMAL"
                 }
                 respuesta = ("HTTP/1.1 200 OK\r\n"
-                            "Content-Type: application/json\r\n\r\n"
-                            + json.dumps(datos))
+                             "Content-Type: application/json\r\n\r\n"
+                             + json.dumps(datos))
                 cl.send(respuesta)
-        else:
-            # ── Dashboard HTML principal ────────────
-            html = """HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n
+            else:  # ← era un segundo `else` suelto, ahora es `else` del `if '/datos'`
+                # ── Dashboard HTML principal ────────────
+                html = """HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n
 <!DOCTYPE html><html><head>
 <meta charset='UTF-8'>
 <meta name='viewport' content='width=device-width,initial-scale=1'>
@@ -192,10 +192,11 @@ async function actualizar(){
 setInterval(actualizar,1000);
 actualizar();
 </script></body></html>"""
-            cl.send(html)
+                cl.send(html)
 
-        cl.close()
-        gc.collect()
+            cl.close()
+            gc.collect()
+
     except OSError as e:
-      if e.args[0] != 11:
-        print("Error:", e)  
+        if e.args[0] != 11:
+            print("Error:", e)
